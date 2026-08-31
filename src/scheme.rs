@@ -15,7 +15,7 @@ use core::fmt;
 /// documented set. Adding `Int1` or `Int6` later is a visible, deliberate enum
 /// variant addition — never a silent widening of a `u8` that every `match` arm
 /// downstream would have to be re-audited for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[non_exhaustive]
 pub enum BitWidth {
     /// 2-bit signed integers (range `-2..=1`).
@@ -25,6 +25,7 @@ pub enum BitWidth {
     /// 4-bit signed integers (range `-8..=7`).
     Int4,
     /// 8-bit signed integers (range `-128..=127`).
+    #[default]
     Int8,
 }
 
@@ -77,12 +78,6 @@ impl BitWidth {
     }
 }
 
-impl Default for BitWidth {
-    fn default() -> Self {
-        BitWidth::Int8
-    }
-}
-
 /// A complete description of a group-wise quantization scheme.
 ///
 /// This is the frozen public vocabulary: a consumer packages one of these and
@@ -110,7 +105,7 @@ impl QuantScheme {
     /// This is `ceil(n * bits / 8)`; the final byte is zero-padded.
     #[inline]
     pub const fn packed_len(self, n: usize) -> usize {
-        (n * self.bits.bits() + 7) / 8
+        (n * self.bits.bits()).div_ceil(8)
     }
 }
 
@@ -169,7 +164,10 @@ impl fmt::Display for QuantError {
                 write!(f, "value {value} out of representable range [{min}, {max}]")
             }
             QuantError::InsufficientPackedData { needed, available } => {
-                write!(f, "packed buffer too short: need {needed} values, have {available}")
+                write!(
+                    f,
+                    "packed buffer too short: need {needed} values, have {available}"
+                )
             }
             QuantError::ZeroGroupSize => write!(f, "group_size must be greater than zero"),
             QuantError::EmptyInput => write!(f, "input must contain at least one value"),
@@ -178,7 +176,7 @@ impl fmt::Display for QuantError {
 }
 
 #[cfg(feature = "alloc")]
-impl crate::alloc::error::Error for QuantError {}
+impl core::error::Error for QuantError {}
 
 #[cfg(test)]
 mod tests {
@@ -209,8 +207,7 @@ mod tests {
         let a = BitWidth::Int4;
         let b = a;
         assert_eq!(a, b);
-        let mut c = a;
-        c = BitWidth::Int8;
+        let c = BitWidth::Int8;
         assert_ne!(a, c);
         assert!(matches!(BitWidth::default(), BitWidth::Int8));
 
@@ -223,10 +220,34 @@ mod tests {
     #[test]
     fn packed_len_formula() {
         // Int3: 3 values -> 9 bits -> 2 bytes.
-        assert_eq!(QuantScheme { bits: BitWidth::Int3, group_size: 3, symmetric: true }.packed_len(3), 2);
+        assert_eq!(
+            QuantScheme {
+                bits: BitWidth::Int3,
+                group_size: 3,
+                symmetric: true
+            }
+            .packed_len(3),
+            2
+        );
         // Int8: N values -> N bytes.
-        assert_eq!(QuantScheme { bits: BitWidth::Int8, group_size: 1, symmetric: true }.packed_len(5), 5);
+        assert_eq!(
+            QuantScheme {
+                bits: BitWidth::Int8,
+                group_size: 1,
+                symmetric: true
+            }
+            .packed_len(5),
+            5
+        );
         // Int4: 1 value -> 1 byte.
-        assert_eq!(QuantScheme { bits: BitWidth::Int4, group_size: 1, symmetric: true }.packed_len(1), 1);
+        assert_eq!(
+            QuantScheme {
+                bits: BitWidth::Int4,
+                group_size: 1,
+                symmetric: true
+            }
+            .packed_len(1),
+            1
+        );
     }
 }

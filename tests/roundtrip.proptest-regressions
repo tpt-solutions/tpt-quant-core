@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 30d6ce987c2c2cfa135b8964b99b5adb3e40c50f715969f6815ba3e03836381e # shrinks to values = [-1.5917041e38, 3.0756826e38], scheme = QuantScheme { bits: Int2, group_size: 1, symmetric: false }
+cc ce2185235237e3bda96023b4188ad14836853c1d93a4ed9d236b2c76e803992e # shrinks to values = [-2130054.3, 1115343.4], scheme = QuantScheme { bits: Int8, group_size: 1, symmetric: true }

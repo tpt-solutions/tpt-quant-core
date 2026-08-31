@@ -1,0 +1,38 @@
+# cargo-deny configuration for tpt-quant-core.
+#
+# This crate's hard rule is ZERO external runtime dependencies. cargo-deny here
+# guards licensing and advisories; the actual "no runtime deps" guarantee is
+# enforced in CI by `cargo tree -e normal` being empty (see ci.yml).
+
+[advisories]
+version = 2
+yanked = "warn"
+ignore = []
+
+[licenses]
+version = 2
+# MIT OR Apache-2.0 is this crate's license; allow both and permissive cousins.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+]
+confidence-threshold = 0.8
+
+[bans]
+version = 2
+multiple-versions = "warn"
+wildcards = "allow"
+# We intentionally have no normal dependencies; this is a safety net.
+allow = []
+
+[sources]
+version = 2
+# Only crates.io.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

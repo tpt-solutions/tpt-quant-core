@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Weekly fuzz run (sibling repos use a scheduled, not per-PR, job).
+    - cron: "17 4 * * 1"
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  test:
+    name: test (${{ matrix.toolchain }}, ${{ matrix.features }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: [stable, beta, "1.85.0"]
+        features: ["--all-features", "--no-default-features"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ${{ matrix.toolchain }}
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.toolchain }}
+      - name: Build
+        run: cargo build ${{ matrix.features }}
+      - name: Test
+        run: cargo test ${{ matrix.features }}
+
+  no_std:
+    name: no_std build (no default features)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build core (no alloc)
+        run: cargo build --no-default-features
+
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+
+  zero_dep:
+    name: zero external (non-dev) dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # Fail if any NON-dev dependency ever appears. This crate must stay
+      # dependency-free; adding a runtime dep should break CI.
+      - name: Assert empty normal dependency tree
+        run: |
+          if [ -n "$(cargo tree -e normal --no-default-features --prefix none 2>/dev/null)" ]; then
+            echo "Non-empty normal dependency tree detected; this crate must have zero runtime deps:" >&2
+            cargo tree -e normal --no-default-features >&2
+            exit 1
+          fi
+      - name: cargo-deny
+        uses: EmbarkStudios/cargo-deny-action@v1
+        with:
+          command: check
+          arguments: --all-features
+
+  miri:
+    name: miri (pack/unpack/dequant UB check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+      - name: Miri (default features)
+        run: cargo miri test --all-features --lib
+        env:
+          MIRIFLAGS: "-Zmiri-strict-provenance"
+
+  fuzz:
+    name: fuzz (scheduled)
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+      - name: Build fuzz target (sanity)
+        working-directory: fuzz
+        run: cargo +nightly fuzz build fuzz_pack_unpack
+      - name: Short fuzz run
+        working-directory: fuzz
+        run: cargo +nightly fuzz run fuzz_pack_unpack -- -max_total_time=120

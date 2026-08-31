@@ -42,10 +42,21 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+// Tests are compiled with the std-based harness; expose it to unit tests that
+// use `Vec`/`vec!` while the library itself stays `no_std`.
+#[cfg(test)]
+extern crate std;
+
 pub mod dequant;
 pub mod pack;
 pub mod scale;
 pub mod scheme;
+
+// Frozen-at-1.0 top-level API (mirrors the documented public vocabulary so
+// downstream crates can call `tpt_quant_core::quantize_group`, etc. directly).
+pub use dequant::{dequantize_group, quantize_group};
+pub use pack::{pack_bits, unpack_bits};
+pub use scale::{GroupScale, compute_group_scale};
 
 #[cfg(feature = "alloc")]
 pub mod calibration;

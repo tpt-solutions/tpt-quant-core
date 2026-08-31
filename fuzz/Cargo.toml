@@ -1,0 +1,24 @@
+[package]
+name = "tpt-quant-core-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.tpt-quant-core]
+path = ".."
+features = ["alloc"]
+
+[[bin]]
+name = "fuzz_pack_unpack"
+path = "fuzz_targets/fuzz_pack_unpack.rs"
+test = false
+doc = false
+
+[workspace]
+members = ["."]
