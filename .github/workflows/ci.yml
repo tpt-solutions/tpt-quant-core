@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
   schedule:
     # Weekly fuzz run (sibling repos use a scheduled, not per-PR, job).
