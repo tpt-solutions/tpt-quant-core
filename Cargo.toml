@@ -1,0 +1,25 @@
+[package]
+name = "tpt-quant-core"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85.0"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+repository = "https://github.com/tpt-solutions/tpt-quant-core"
+description = "Minimal, stable, zero-dependency quantization math: group-wise scale, int2/int3/int4/int8 pack-unpack, dequant, and calibration stats."
+keywords = ["quantization", "quantize", "int8", "int4", "no-std"]
+categories = ["science", "algorithms", "embedded", "no-std"]
+readme = "README.md"
+
+[features]
+# The ONLY feature flag. Core scale/pack/dequant are always available
+# (no_std, no alloc). Calibration's histogram needs a heap.
+alloc = []
+
+[dependencies]
+
+[dev-dependencies]
+proptest = "1.4"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }

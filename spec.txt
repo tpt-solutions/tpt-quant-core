@@ -1,0 +1,76 @@
+1. tpt-quant-core
+Purpose
+
+Minimal, stable, zero-external-dependency quantization math: group-wise scale computation, int8/int4/int3/int2 pack-unpack, dequantization, and running calibration statistics. Nothing GPU-specific, nothing model-format-specific. The thing every quantization consumer in the org needs and none of them should reimplement.
+
+Why this repo can actually reach "done"
+
+The math here — compute a scale, quantize a value against it, pack bits, unpack bits — has been well-understood since long before this project. There is no reason for this crate's core logic to ever change once it's correct. The only things that would ever force a change are: a bug (caught by exhaustive testing before 1.0, see below), or a genuinely new quantization scheme (e.g. a new bit-width) — which is additive, not a rewrite, if the API is shaped right from the start.
+
+Crate layout
+
+One crate, not a workspace. Splitting scale/pack/dequant/calibration into separate publishable crates (the way tpt-zero-bytes splits bloom/bitset/etc. into independent leaves) doesn't fit here — every real consumer needs all four together, so fragmenting them adds version-matrix overhead for no independent-adoption benefit.
+
+tpt-quant-core/
+  src/
+    lib.rs
+    scheme.rs        // QuantScheme, bit-width enum — the stable public vocabulary
+    scale.rs          // group-wise scale/zero-point computation (symmetric & asymmetric)
+    pack.rs            // int8/int4/int3/int2 bit-packing and unpacking
+    dequant.rs          // scalar dequantization (the correctness oracle other crates diff against)
+    calibration.rs        // running min/max + histogram-based percentile stats, no_std+alloc
+  tests/
+    roundtrip.rs      // property tests: quantize -> dequant error bounds, for every (bits, group_size, symmetric) combination
+    pack_edges.rs      // exhaustive edge cases: odd-length arrays, group_size not dividing evenly, bits=1 edge, etc.
+  fuzz/
+    fuzz_pack_unpack.rs  // matches tpt-zero-bytes' / tpt-local-ai's existing fuzz-target convention
+Core API (freeze this at 1.0)
+rust
+#![no_std]
+#[cfg(feature = "alloc")] extern crate alloc;
+
+pub struct QuantScheme {
+    pub bits: BitWidth,          // enum, not raw u8 — see below
+    pub group_size: usize,
+    pub symmetric: bool,
+}
+
+pub enum BitWidth { Int2, Int3, Int4, Int8 }
+
+pub struct GroupScale {
+    pub scale: f32,
+    pub zero_point: i32,          // unused when symmetric; kept in the struct so callers don't branch on symmetric-ness
+}
+
+pub fn compute_group_scale(values: &[f32], scheme: &QuantScheme) -> GroupScale;
+
+pub fn quantize_group(values: &[f32], scale: &GroupScale, scheme: &QuantScheme, out: &mut [u8]) -> Result<(), QuantError>;
+
+pub fn dequantize_group(packed: &[u8], scale: &GroupScale, scheme: &QuantScheme, out: &mut [f32]) -> Result<(), QuantError>;
+
+// pack.rs — the primitive quantize_group/dequantize_group build on
+pub fn pack_bits(values: &[i8], bits: BitWidth, out: &mut [u8]) -> Result<(), QuantError>;
+pub fn unpack_bits(packed: &[u8], bits: BitWidth, out: &mut [i8]) -> Result<(), QuantError>;
+
+// calibration.rs — needs `alloc` for the histogram; core scale/pack/dequant do not
+#[cfg(feature = "alloc")]
+pub struct RunningStats { /* min, max, count, fixed-bucket histogram for percentile estimation */ }
+#[cfg(feature = "alloc")]
+impl RunningStats {
+    pub fn update(&mut self, values: &[f32]);
+    pub fn percentile(&self, p: f32) -> f32;
+}
+
+BitWidth as an enum rather than a raw u8 is a deliberate stability choice: it makes "what bit-widths does this crate support" a documented, exhaustively-matched set, so adding Int1 or Int6 later is a visible, deliberate enum variant addition — not a silent widening of an u8 that every match arm downstream has to be audited for.
+
+Non-goals (write these into the README on day one)
+No GPU code, no WGSL, no backend-specific anything. That's tpt-kv-quant's job and Project 2's quantize/awq.rs job. This crate is portable scalar math only.
+No model-format code. Doesn't know what a .gguf or .safetensors file is. Takes &[f32], returns bytes. Full stop.
+No training-time / QAT support. Inference-time quantization only.
+No feature flags beyond alloc. Resist the urge to add configurability "in case someone needs it" — every speculative feature is a future maintenance liability on a crate whose whole point is not needing maintenance.
+Path to "done"
+scheme.rs + scale.rs + pack.rs, each with property tests (proptest: quantize→dequantize round-trip error stays within the theoretical bound for the given bit-width, for random inputs across all QuantScheme combinations).
+dequant.rs — trivial once pack/scale exist, but this is the function every other crate (tpt-kv-quant's cpu_ref, Project 2's quantize/awq.rs) will diff their optimized implementations against, so its correctness is load-bearing for two other repos, not just this one. Extra scrutiny here is worth it.
+calibration.rs.
+Fuzz targets on pack/unpack (the bit-manipulation code is exactly where off-by-one and edge-case bugs hide).
+1.0 release once the above is green and stable for a few weeks with no found bugs. After 1.0, the only expected changes are new BitWidth variants — additive, non-breaking.
